@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Galactic Rocket Rush - 4M Edition</title>
+    <!-- FontAwesome untuk ikon tanpa emoji -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Orbitron untuk nuansa Sci-Fi -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- RESET & BASE --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; /* Mencegah scroll saat main */
+        }
+
+        body {
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Rajdhani', sans-serif;
+            color: white;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        /* --- BACKGROUND LAYERS --- */
+        #bg-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.6;
+            background-image: url('angkasa1.gif'); /* Fallback / Layer 1 */
+            background-size: cover;
+            background-position: center;
+        }
+
+        #moon-layer {
+            position: absolute;
+            top: 10%;
+            right: 10%;
+            width: 150px;
+            height: 150px;
+            z-index: 2;
+            background-image: url('bulan.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            opacity: 0.8;
+            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.3));
+            animation: moonFloat 20s infinite alternate ease-in-out;
+        }
+
+        @keyframes moonFloat {
+            0% { transform: translateY(0px) rotate(0deg); }
+            100% { transform: translateY(30px) rotate(5deg); }
+        }
+
+        /* Canvas untuk partikel dan efek (High Performance) */
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+        }
+
+        /* --- GAME OBJECTS CONTAINER --- */
+        #game-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 4;
+            pointer-events: none; /* Biarkan event tembus ke kontrol */
+        }
+
+        /* Rocket Style */
+        .player-rocket {
+            position: absolute;
+            width: 80px; /* Ukuran roket */
+            height: 80px;
+            background-image: url('roket.gif');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            filter: drop-shadow(0 0 15px cyan);
+            transition: transform 0.1s; /* Smooth banking effect */
+        }
+
+        /* Coin Style */
+        .coin {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-image: url('coin1.gif');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 9;
+            filter: drop-shadow(0 0 10px gold);
+        }
+
+        /* Meteor/Obstacle Style (Pake FontAwesome biar ringan & tajam) */
+        .obstacle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            color: #ff4757;
+            font-size: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9;
+            filter: drop-shadow(0 0 10px red);
+            animation: spinMeteor 2s linear infinite;
+        }
+
+        @keyframes spinMeteor {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Effect hit coin */
+        .hit-effect {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background-image: url('kena-coin.gif');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 11;
+            pointer-events: none;
+        }
+
+        /* --- UI OVERLAY --- */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            pointer-events: auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            transition: opacity 0.5s;
+        }
+
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* HUD (Heads Up Display) - Score */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 40;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 0 0 10px #00d2ff;
+            display: flex;
+            gap: 20px;
+            pointer-events: none;
+        }
+
+        .hud-item {
+            background: rgba(0, 20, 40, 0.8);
+            padding: 10px 20px;
+            border-radius: 30px;
+            border: 1px solid rgba(0, 210, 255, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Start / Game Over Screen */
+        .panel {
+            text-align: center;
+            padding: 40px;
+            background: linear-gradient(135deg, rgba(25, 25, 25, 0.95), rgba(0, 0, 0, 0.98));
+            border: 2px solid rgba(0, 210, 255, 0.5);
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(0, 210, 255, 0.2);
+            max-width: 90%;
+            width: 400px;
+            transform: scale(1);
+            animation: pulsePanel 3s infinite ease-in-out;
+        }
+
+        @keyframes pulsePanel {
+            0%, 100% { box-shadow: 0 0 30px rgba(0, 210, 255, 0.2); }
+            50% { box-shadow: 0 0 60px rgba(0, 210, 255, 0.5); }
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 42px;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 16px;
+            color: #ccc;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+
+        .btn-start {
+            background: linear-gradient(90deg, #00d2ff, #0056b3);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 20px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 210, 255, 0.4);
+            text-transform: uppercase;
+        }
+
+        .btn-start:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 0 40px rgba(0, 210, 255, 0.8);
+        }
+
+        .btn-start:active {
+            transform: scale(0.95);
+        }
+
+        /* Loading Screen */
+        #loader {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #loader img {
+            width: 100px;
+            margin-bottom: 20px;
+        }
+
+        .loader-text {
+            font-family: 'Orbitron';
+            color: #00d2ff;
+            letter-spacing: 3px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+
+        /* Mobile Controls Hint */
+        .controls-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .fa-rocket { color: #00d2ff; }
+        .fa-coins { color: gold; }
+        .fa-heart { color: #ff4757; }
+
+    </style>
+</head>
+<body>
+
+    <!-- ASSET LOADER -->
+    <div id="loader">
+        <img src="loading.gif" alt="Loading...">
+        <div class="loader-text">INITIALIZING SYSTEMS...</div>
+    </div>
+
+    <!-- BACKGROUNDS -->
+    <div id="bg-video"></div> <!-- Angkasa1.gif -->
+    <div id="moon-layer"></div> <!-- Bulan.png -->
+    
+    <!-- MAIN ENGINE -->
+    <canvas id="gameCanvas"></canvas> <!-- Stars & Speed Lines -->
+    <div id="game-area">
+        <div id="player" class="player-rocket"></div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div class="hud-item">
+            <i class="fa-solid fa-star fa-spin"></i>
+            <span id="score">0</span>
+        </div>
+        <div class="hud-item">
+            <i class="fa-solid fa-heart-pulse"></i>
+            <span id="health">100%</span>
+        </div>
+    </div>
+
+    <!-- UI MENUS -->
+    <div id="ui-layer">
+        <div class="panel" id="start-panel">
+            <h1>Rocket<br>Launch</h1>
+            <p>Misi: Hindari Meteor, Ambil Coin.<br>Sentuh & Geser (HP) atau Mouse (PC).</p>
+            <button class="btn-start" onclick="startGame()">LAUNCH <i class="fa-solid fa-shuttle-space"></i></button>
+            <div class="controls-hint"><i class="fa-solid fa-mobile-screen"></i> Slide to Move</div>
+        </div>
+
+        <div class="panel hidden" id="game-over-panel">
+            <h1 style="color: #ff4757; background: none; -webkit-text-fill-color: #ff4757;">MISSION FAILED</h1>
+            <p>Skor Akhir: <span id="final-score" style="color: white; font-weight: bold; font-size: 24px;">0</span></p>
+            <button class="btn-start" onclick="resetGame()">RETRY <i class="fa-solid fa-rotate-right"></i></button>
+        </div>
+    </div>
+
+    <script>
+        /* * GLOBAL CONFIG & ASSETS
+         * Menggunakan link yang sudah divalidasi dari user upload
+         */
+        const ASSETS = {
+            rocket: 'roket.gif',
+            bg: 'angkasa1.gif',
+            coin: 'coin1.gif',
+            moon: 'bulan.png',
+            hit: 'kena-coin.gif',
+            meteorIcon: 'fa-meteor' // Menggunakan FontAwesome
+        };
+
+        /* GAME STATE */
+        const state = {
+            isPlaying: false,
+            score: 0,
+            health: 100,
+            speed: 5,
+            difficultyMultiplier: 1,
+            lastTime: 0,
+            spawnTimer: 0,
+            frames: 0
+        };
+
+        /* DOM ELEMENTS */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameArea = document.getElementById('game-area');
+        const player = document.getElementById('player');
+        const scoreEl = document.getElementById('score');
+        const healthEl = document.getElementById('health');
+        const uiLayer = document.getElementById('ui-layer');
+        const startPanel = document.getElementById('start-panel');
+        const gameOverPanel = document.getElementById('game-over-panel');
+        const finalScoreEl = document.getElementById('final-score');
+        const loader = document.getElementById('loader');
+
+        /* AUDIO SYSTEM (Synthesized biar ringan & no external files) */
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'coin') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        /* RESIZE HANDLER */
+        let width, height;
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        /* LOADING SIMULATOR */
+        window.onload = () => {
+            setTimeout(() => {
+                loader.style.opacity = '0';
+                setTimeout(() => { loader.style.display = 'none'; }, 500);
+            }, 1500); // 1.5 detik loading biar keliatan loading gif nya
+        };
+
+        /* INPUT HANDLING */
+        let playerX = width / 2;
+        let targetX = width / 2;
+        
+        // Mouse / Desktop
+        window.addEventListener('mousemove', (e) => {
+            if(state.isPlaying) targetX = e.clientX;
+        });
+
+        // Touch / Mobile
+        window.addEventListener('touchmove', (e) => {
+            if(state.isPlaying) {
+                targetX = e.touches[0].clientX;
+                e.preventDefault(); // Mencegah scroll
+            }
+        }, { passive: false });
+        
+        window.addEventListener('touchstart', (e) => {
+             if(state.isPlaying) targetX = e.touches[0].clientX;
+        }, { passive: false });
+
+        /* ENTITY MANAGEMENT */
+        let entities = []; // Coins & Meteors
+
+        class Entity {
+            constructor(type) {
+                this.type = type;
+                this.width = 50;
+                this.height = 50;
+                this.x = Math.random() * (width - this.width);
+                this.y = -100;
+                this.speed = (Math.random() * 3 + 2) * state.difficultyMultiplier;
+                this.markedForDeletion = false;
+                
+                // Create DOM Element
+                this.el = document.createElement('div');
+                this.el.style.left = this.x + 'px';
+                this.el.style.top = this.y + 'px';
+                
+                if (type === 'coin') {
+                    this.el.className = 'coin';
+                } else {
+                    this.el.className = 'obstacle';
+                    this.el.innerHTML = '<i class="fa-solid fa-meteor"></i>';
+                    this.speed += 2; // Meteor lebih cepat
+                }
+                
+                gameArea.appendChild(this.el);
+            }
+
+            update() {
+                this.y += this.speed;
+                this.el.style.transform = `translateY(${this.y}px)`; // GPU accel
+
+                // Hapus jika keluar layar
+                if (this.y > height) {
+                    this.markedForDeletion = true;
+                    this.el.remove();
+                }
+
+                // Collision Detection
+                // Player Rect
+                const pRect = {
+                    x: playerX - 40, // 40 adalah setengah lebar roket (80px)
+                    y: height - 100, // Posisi fix roket di bawah
+                    w: 60, // Hitbox lebih kecil dikit biar fair
+                    h: 60
+                };
+
+                // Entity Rect
+                if (
+                    pRect.x < this.x + this.width &&
+                    pRect.x + pRect.w > this.x &&
+                    pRect.y < this.y + this.height &&
+                    pRect.y + pRect.h > this.y
+                ) {
+                    if (this.type === 'coin') {
+                        collectCoin(this.x, this.y);
+                        this.markedForDeletion = true;
+                        this.el.remove();
+                    } else {
+                        hitObstacle();
+                        this.markedForDeletion = true;
+                        this.el.remove();
+                    }
+                }
+            }
+        }
+
+        /* CANVAS PARTICLES (Starfield Speed Effect) */
+        const stars = [];
+        for(let i=0; i<100; i++) {
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                size: Math.random() * 2,
+                speed: Math.random() * 5 + 1
+            });
+        }
+
+        function drawBackground() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw Speed Lines / Stars
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            
+            stars.forEach(star => {
+                star.y += star.speed * (state.difficultyMultiplier * 2);
+                if(star.y > height) {
+                    star.y = 0;
+                    star.x = Math.random() * width;
+                }
+                
+                ctx.beginPath();
+                // Efek "Streak" saat ngebut
+                const length = star.speed * state.difficultyMultiplier * 5;
+                ctx.rect(star.x, star.y, star.size, length);
+                ctx.fill();
+            });
+        }
+
+        /* GAME LOGIC HELPERS */
+        function collectCoin(x, y) {
+            state.score += 100;
+            scoreEl.innerText = state.score;
+            playSound('coin');
+            
+            // Munculin efek visual (GIF kena-coin)
+            const effect = document.createElement('div');
+            effect.className = 'hit-effect';
+            effect.style.left = x + 'px';
+            effect.style.top = y + 'px';
+            gameArea.appendChild(effect);
+            
+            // Hapus efek setelah animasi
+            setTimeout(() => effect.remove(), 500);
+        }
+
+        function hitObstacle() {
+            state.health -= 20; // 5x kena mati
+            healthEl.innerText = state.health + '%';
+            playSound('hit');
+            
+            // Shake effect
+            document.body.style.transform = 'translate(5px, 5px)';
+            setTimeout(() => document.body.style.transform = 'translate(-5px, -5px)', 50);
+            setTimeout(() => document.body.style.transform = 'translate(0, 0)', 100);
+            
+            // Flash screen red
+            const flash = document.createElement('div');
+            flash.style.position = 'absolute';
+            flash.style.top = 0; flash.style.left = 0;
+            flash.style.width = '100%'; flash.style.height = '100%';
+            flash.style.background = 'rgba(255, 0, 0, 0.3)';
+            flash.style.zIndex = 20;
+            document.body.appendChild(flash);
+            setTimeout(() => flash.remove(), 100);
+
+            if(state.health <= 0) gameOver();
+        }
+
+        function updatePlayer() {
+            // Smooth lerp movement (agar roket tidak teleport tapi meluncur)
+            const dx = targetX - playerX;
+            playerX += dx * 0.1; // 0.1 = friction factor
+            
+            // Batasi agar tidak keluar layar
+            if (playerX < 40) playerX = 40;
+            if (playerX > width - 40) playerX = width - 40;
+
+            player.style.left = playerX + 'px';
+            
+            // Efek miring (Banking)
+            const rotate = dx * 0.1;
+            // Limit rotasi max 20 derajat
+            const clampRotate = Math.max(-20, Math.min(20, rotate));
+            player.style.transform = `translateX(-50%) rotate(${clampRotate}deg)`;
+        }
+
+        function spawner() {
+            state.spawnTimer++;
+            // Spawn rate based on difficulty
+            if (state.spawnTimer > 60 / state.difficultyMultiplier) {
+                const type = Math.random() > 0.6 ? 'obstacle' : 'coin'; // 40% coin, 60% meteor
+                entities.push(new Entity(type));
+                state.spawnTimer = 0;
+            }
+        }
+
+        /* MAIN LOOP */
+        function gameLoop(timestamp) {
+            if (!state.isPlaying) return;
+
+            // Update difficulty over time
+            state.frames++;
+            if (state.frames % 600 === 0) { // Setiap 10 detik
+                state.difficultyMultiplier += 0.1; // Makin cepat
+            }
+
+            drawBackground();
+            updatePlayer();
+            spawner();
+
+            // Update Entities
+            entities.forEach(e => e.update());
+            entities = entities.filter(e => !e.markedForDeletion);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        /* GAME CONTROL FUNCTIONS */
+        function startGame() {
+            state.isPlaying = true;
+            state.score = 0;
+            state.health = 100;
+            state.difficultyMultiplier = 1;
+            state.frames = 0;
+            entities.forEach(e => e.el.remove());
+            entities = [];
+            
+            scoreEl.innerText = '0';
+            healthEl.innerText = '100%';
+            
+            uiLayer.style.opacity = '0'; // Hide UI
+            setTimeout(() => {
+                startPanel.classList.add('hidden');
+                gameOverPanel.classList.add('hidden');
+                uiLayer.classList.add('hidden'); // Pass through clicks
+            }, 500);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            state.isPlaying = false;
+            finalScoreEl.innerText = state.score;
+            
+            uiLayer.classList.remove('hidden');
+            uiLayer.style.opacity = '1';
+            gameOverPanel.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            startGame();
+        }
+
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rocket Launch - Stabilized Edition</title>
+    
+    <!-- Tailwind CSS (Utility First) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Tone.js (Audio Engine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* --- CORE OPTIMIZATION --- */
+        body {
+            margin: 0;
+            overflow: hidden; /* No scroll */
+            background-color: #010204;
+            font-family: 'Rajdhani', sans-serif;
+            touch-action: none; /* Disable default touch actions */
+            user-select: none; /* Disable text selection */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Background Layers */
+        #bg-static {
+            position: fixed;
+            inset: 0;
+            background: url('media/angkasa1.gif'); 
+            background-size: cover;
+            background-position: center;
+            opacity: 0.6;
+            z-index: -2;
+            will-change: transform;
+        }
+
+        #bg-galaxy {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vmin; /* Responsive size */
+            opacity: 0.3;
+            z-index: -1;
+            mix-blend-mode: screen;
+            pointer-events: none;
+        }
+
+        /* Canvas Game Layer */
+        canvas {
+            display: block;
+            z-index: 1;
+        }
+
+        /* --- UI ELEMENTS --- */
+        
+        /* Glass Panel Styling */
+        .glass-panel {
+            background: rgba(13, 22, 36, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Player Ship (DOM Optimized) */
+        #player-ship {
+            position: absolute;
+            top: 0; left: 0;
+            width: 70px; /* Adjusted size */
+            height: auto;
+            z-index: 10;
+            pointer-events: none;
+            /* Critical for performance: */
+            will-change: transform; 
+            transform: translate3d(0,0,0); 
+            filter: drop-shadow(0 0 15px rgba(0, 190, 255, 0.5));
+        }
+
+        /* Coin Hit FX (GIF overlay) */
+        .coin-fx {
+            position: absolute;
+            width: 80px; height: 80px;
+            transform: translate(-50%, -50%);
+            z-index: 9;
+            pointer-events: none;
+            will-change: opacity;
+        }
+
+        /* Neon Text Utilities */
+        .text-glow {
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+        }
+        
+        .text-glow-red {
+            text-shadow: 0 0 15px rgba(255, 0, 0, 0.8);
+        }
+
+        /* Loading Screen Transition */
+        .fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- PRELOAD ASSETS (Hidden but loaded) -->
+    <div style="display:none;">
+        <img id="asset-moon" src="media/bulan.png" alt="Moon">
+        <img id="asset-coin" src="media/coin1.gif" alt="Coin">
+    </div>
+
+    <!-- PRELOADER -->
+    <div id="preloader" class="fixed inset-0 bg-black z-[100] flex flex-col justify-center items-center transition-opacity duration-500">
+        <img src="media/loading.gif" alt="Loading..." class="w-20 h-20 mb-4 object-contain">
+        <div class="text-cyan-500 font-['Orbitron'] tracking-[0.3em] text-xs animate-pulse">Mengkonfigurasi Roket.......</div>
+    </div>
+
+    <!-- BACKGROUNDS -->
+    <div id="bg-static"></div>
+    <img id="bg-galaxy" src="media/angkasa.gif" alt="Deep Space">
+
+    <!-- GAME HUD (Hidden by default) -->
+    <div id="game-ui" class="fixed inset-0 pointer-events-none z-20 hidden opacity-0 transition-opacity duration-300">
+        <!-- Score Board -->
+        <div class="absolute top-4 left-4 glass-panel px-5 py-2 rounded-xl flex items-center gap-3 border-l-4 border-yellow-400">
+            <i class="fa-solid fa-star text-yellow-400 text-lg animate-[spin_3s_linear_infinite]"></i>
+            <div>
+                <div class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Score</div>
+                <div id="score-display" class="text-white text-2xl font-bold font-['Orbitron'] leading-none">0</div>
+            </div>
+        </div>
+        
+        <!-- Health / Speed Indicator -->
+        <div class="absolute top-4 right-4 glass-panel px-4 py-2 rounded-xl border-r-4 border-cyan-500 text-right">
+            <div class="text-cyan-400 text-[9px] font-bold tracking-widest uppercase">Velocity</div>
+            <div class="w-24 h-1.5 bg-gray-700 rounded-full mt-1 overflow-hidden">
+                <div id="speed-bar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-600 w-1/3 transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Touch Controls Hint (Mobile only, fades out) -->
+        <div id="touch-hint" class="absolute bottom-10 w-full text-center text-white/30 text-sm font-['Rajdhani'] animate-pulse">
+            GESER BUAT HINDARIN BULAN
+        </div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="main-menu" class="fixed inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm transition-all duration-500">
+        <!-- NEW LOGO BANNER -->
+        <div class="relative group cursor-pointer mb-8 transition-transform hover:scale-105 duration-300">
+            <!-- Glow Effect behind banner -->
+            <div class="absolute inset-0 bg-yellow-500/20 blur-xl rounded-full scale-75 animate-pulse"></div>
+            <img src="media/koin-banner.gif" alt="Rocket Launch" class="relative w-64 md:w-80 object-contain drop-shadow-[0_0_15px_rgba(255,215,0,0.5)]">
+        </div>
+
+        <button onclick="app.start()" class="relative px-12 py-4 bg-transparent border-2 border-cyan-500 text-cyan-500 font-['Orbitron'] font-bold text-xl tracking-widest hover:bg-cyan-500 hover:text-black transition-all duration-300 overflow-hidden group">
+            <span class="relative z-10 flex items-center gap-3">
+                <i class="fa-solid fa-rocket"></i> MULAI
+            </span>
+            <div class="absolute inset-0 bg-cyan-400 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+        </button>
+        
+        <div class="mt-6 text-gray-500 text-xs font-['Rajdhani'] uppercase tracking-[0.2em]">
+            XBIBZ OFFICIAL
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="game-over" class="fixed inset-0 z-40 flex flex-col items-center justify-center bg-red-950/90 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+        <h2 class="text-5xl md:text-7xl font-['Orbitron'] font-black text-white mb-2 text-glow-red italic">Mmapus Mati lu</h2>
+        
+        <div class="bg-black/40 p-6 rounded-lg border border-red-500/30 text-center mb-8 backdrop-blur-sm">
+            <p class="text-red-200 font-['Rajdhani'] text-sm tracking-widest uppercase mb-1">Final Score</p>
+            <p id="final-score" class="text-4xl font-bold text-yellow-400 font-['Orbitron']">0</p>
+        </div>
+
+        <button onclick="app.reset()" class="px-8 py-3 bg-red-600 hover:bg-red-500 text-white rounded font-['Orbitron'] font-bold tracking-wider shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all active:scale-95">
+            Ulang?
+        </button>
+    </div>
+
+    <!-- GAME OBJECTS -->
+    <img id="player-ship" src="media/roket.gif" class="hidden" alt="Player">
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /**
+         * ROCKET LAUNCH: STABILIZED CORE
+         * Menggunakan class-based structure biar rapi dan memori terkontrol.
+         */
+
+        const App = function() {
+            // --- CONFIG ---
+            this.config = {
+                baseSpeed: 6,
+                maxSpeed: 15,
+                laneTolerance: 20 // Toleransi hitbox
+            };
+
+            // --- STATE ---
+            this.state = {
+                isRunning: false,
+                isOver: false,
+                score: 0,
+                speed: 6,
+                frames: 0,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                inputX: window.innerWidth / 2
+            };
+
+            // --- ENTITIES ---
+            this.player = { x: 0, y: 0, w: 60, h: 80, tilt: 0 };
+            this.obstacles = [];
+            this.coins = [];
+            this.particles = [];
+
+            // --- DOM ELEMENTS ---
+            this.els = {
+                canvas: document.getElementById('gameCanvas'),
+                ctx: document.getElementById('gameCanvas').getContext('2d', { alpha: true, desynchronized: true }), // desynchronized for less latency
+                player: document.getElementById('player-ship'),
+                score: document.getElementById('score-display'),
+                finalScore: document.getElementById('final-score'),
+                speedBar: document.getElementById('speed-bar'),
+                ui: document.getElementById('game-ui'),
+                menu: document.getElementById('main-menu'),
+                gameOver: document.getElementById('game-over'),
+                preloader: document.getElementById('preloader')
+            };
+
+            // --- ASSETS ---
+            this.assets = {
+                moon: document.getElementById('asset-moon'),
+                coin: document.getElementById('asset-coin'),
+                explosionGif: 'media/kena-coin.gif'
+            };
+
+            // --- AUDIO (TONE.JS) ---
+            this.audio = {
+                synth: null,
+                noise: null,
+                init: async () => {
+                    await Tone.start();
+                    // Simple synthesized SFX to avoid large file loading
+                    this.audio.synth = new Tone.PolySynth(Tone.Synth).toDestination();
+                    this.audio.synth.volume.value = -10;
+                    
+                    this.audio.noise = new Tone.Noise("pink").toDestination();
+                    this.audio.noise.volume.value = -20;
+                    const filter = new Tone.AutoFilter(Math.random()*10).connect(Tone.Destination);
+                },
+                playCoin: () => {
+                    if(this.audio.synth) this.audio.synth.triggerAttackRelease(["C6", "E6"], "16n");
+                },
+                playCrash: () => {
+                    if(this.audio.synth) this.audio.synth.triggerAttackRelease(["C2", "G1"], "4n");
+                }
+            };
+
+            // --- INITIALIZATION ---
+            this.init = () => {
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                // Input handling (Unified)
+                const moveHandler = (e) => {
+                    if (!this.state.isRunning) return;
+                    let clientX;
+                    if(e.touches) {
+                        // e.preventDefault(); // Prevent scroll
+                        clientX = e.touches[0].clientX;
+                    } else {
+                        clientX = e.clientX;
+                    }
+                    this.state.inputX = clientX;
+                };
+
+                window.addEventListener('mousemove', moveHandler);
+                window.addEventListener('touchmove', moveHandler, { passive: false });
+                
+                // Preloader off
+                setTimeout(() => {
+                    this.els.preloader.style.opacity = '0';
+                    setTimeout(() => this.els.preloader.style.display = 'none', 500);
+                }, 1000);
+
+                // Start loop
+                this.loop();
+            };
+
+            this.resize = () => {
+                this.state.width = window.innerWidth;
+                this.state.height = window.innerHeight;
+                this.els.canvas.width = this.state.width;
+                this.els.canvas.height = this.state.height;
+                
+                if(!this.state.isRunning) {
+                    this.state.inputX = this.state.width / 2;
+                    this.player.x = this.state.width / 2;
+                }
+            };
+
+            // --- GAME CONTROL ---
+            this.start = async () => {
+                this.audio.init(); // Init audio context on user interaction
+                
+                this.els.menu.style.opacity = '0';
+                setTimeout(() => this.els.menu.classList.add('hidden'), 500);
+                
+                this.els.ui.classList.remove('hidden');
+                // Force reflow
+                void this.els.ui.offsetWidth; 
+                this.els.ui.classList.remove('opacity-0');
+
+                this.els.gameOver.classList.add('hidden');
+                this.els.gameOver.classList.add('opacity-0');
+                this.els.player.classList.remove('hidden');
+
+                // Reset Data
+                this.state.isRunning = true;
+                this.state.isOver = false;
+                this.state.score = 0;
+                this.state.speed = this.config.baseSpeed;
+                this.state.frames = 0;
+                this.obstacles = [];
+                this.coins = [];
+                this.particles = [];
+                this.state.inputX = this.state.width / 2;
+                this.player.x = this.state.width / 2;
+                this.player.y = this.state.height - 150;
+
+                this.updateScoreUI();
+            };
+
+            this.reset = () => {
+                this.start();
+            };
+
+            this.crash = () => {
+                if(this.state.isOver) return;
+                this.state.isOver = true;
+                this.state.isRunning = false;
+                this.audio.playCrash();
+
+                this.els.finalScore.innerText = this.state.score.toLocaleString();
+                this.els.ui.classList.add('opacity-0');
+                
+                this.els.gameOver.classList.remove('hidden');
+                void this.els.gameOver.offsetWidth;
+                this.els.gameOver.classList.remove('opacity-0');
+
+                // Camera Shake Effect via Body
+                document.body.style.transform = "translate(5px, 5px)";
+                setTimeout(() => document.body.style.transform = "translate(-5px, -5px)", 50);
+                setTimeout(() => document.body.style.transform = "translate(0, 0)", 100);
+            };
+
+            // --- LOGIC LOOP ---
+            this.update = () => {
+                if (!this.state.isRunning) return;
+
+                this.state.frames++;
+                
+                // Difficulty Scaling
+                if(this.state.frames % 300 === 0 && this.state.speed < this.config.maxSpeed) {
+                    this.state.speed += 0.5;
+                }
+
+                // Player Movement (Lerp for smooth feeling)
+                // GPU Accelerated movement via CSS Transform is handled in render()
+                // Here we just calc logical position
+                const dx = this.state.inputX - this.player.x;
+                this.player.x += dx * 0.15; // Smooth factor
+                
+                // Boundary
+                if(this.player.x < 30) this.player.x = 30;
+                if(this.player.x > this.state.width - 30) this.player.x = this.state.width - 30;
+
+                // Tilt calculation
+                this.player.tilt = Math.max(-25, Math.min(25, -dx * 0.5));
+
+                // --- SPAWNING ---
+                // Moon Obstacles
+                if (this.state.frames % Math.floor(600 / this.state.speed) === 0) {
+                    if(Math.random() > 0.3) { // 70% chance
+                        const size = Math.random() * 60 + 50;
+                        this.obstacles.push({
+                            x: Math.random() * (this.state.width - size),
+                            y: -150,
+                            size: size,
+                            speed: this.state.speed * (0.8 + Math.random() * 0.4),
+                            rot: Math.random() * 360,
+                            vRot: (Math.random() - 0.5) * 2
+                        });
+                    }
+                }
+
+                // Coins
+                if (this.state.frames % Math.floor(400 / this.state.speed) === 0) {
+                    this.coins.push({
+                        x: Math.random() * (this.state.width - 50),
+                        y: -100,
+                        size: 45,
+                        angle: 0
+                    });
+                }
+
+                // --- COLLISION & PHYSICS ---
+                // Obstacles
+                for (let i = this.obstacles.length - 1; i >= 0; i--) {
+                    let o = this.obstacles[i];
+                    o.y += o.speed;
+                    o.rot += o.vRot;
+
+                    // Hitbox: Circle based
+                    const dist = Math.hypot(this.player.x - (o.x + o.size/2), this.player.y - (o.y + o.size/2));
+                    // Tolerance is simpler hitbox
+                    if (dist < (o.size/2 + 20)) {
+                        this.crash();
+                    }
+
+                    if (o.y > this.state.height + 100) this.obstacles.splice(i, 1);
+                }
+
+                // Coins
+                for (let i = this.coins.length - 1; i >= 0; i--) {
+                    let c = this.coins[i];
+                    c.y += this.state.speed;
+                    c.angle += 0.1;
+
+                    const dist = Math.hypot(this.player.x - (c.x + c.size/2), this.player.y - (c.y + c.size/2));
+                    if (dist < (c.size/2 + 30)) {
+                        this.collectCoin(c);
+                        this.coins.splice(i, 1);
+                    } else if (c.y > this.state.height + 50) {
+                        this.coins.splice(i, 1);
+                    }
+                }
+
+                // Particles (Visuals)
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    let p = this.particles[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.05;
+                    if(p.life <= 0) this.particles.splice(i, 1);
+                }
+            };
+
+            this.collectCoin = (c) => {
+                this.state.score += 100;
+                this.updateScoreUI();
+                this.audio.playCoin();
+
+                // 1. GIF Overlay Effect (Short lived)
+                const fx = document.createElement('img');
+                fx.src = this.assets.explosionGif + '?t=' + Date.now(); // Cache bust
+                fx.className = 'coin-fx';
+                fx.style.left = (c.x + c.size/2) + 'px';
+                fx.style.top = (c.y + c.size/2) + 'px';
+                document.body.appendChild(fx);
+                setTimeout(() => fx.remove(), 600);
+
+                // 2. Canvas Particles
+                for(let i=0; i<8; i++) {
+                    this.particles.push({
+                        x: c.x + c.size/2,
+                        y: c.y + c.size/2,
+                        vx: (Math.random() - 0.5) * 10,
+                        vy: (Math.random() - 0.5) * 10,
+                        life: 1.0,
+                        color: `hsl(${40 + Math.random()*20}, 100%, 50%)`
+                    });
+                }
+            };
+
+            this.updateScoreUI = () => {
+                this.els.score.innerText = this.state.score;
+                // Update bar width
+                const pct = Math.min(100, (this.state.speed / this.config.maxSpeed) * 100);
+                this.els.speedBar.style.width = pct + '%';
+            };
+
+            // --- RENDER LOOP ---
+            this.draw = () => {
+                const ctx = this.els.ctx;
+                
+                // 1. Clear with performance in mind
+                ctx.clearRect(0, 0, this.state.width, this.state.height);
+
+                if(!this.state.isRunning) return;
+
+                // 2. Update Player DOM position via Transform (GPU)
+                // Using translate3d forces hardware acceleration
+                this.els.player.style.transform = `translate3d(${this.player.x - 35}px, ${this.player.y - 40}px, 0) rotate(${this.player.tilt}deg)`;
+
+                // 3. Draw Obstacles
+                for (let o of this.obstacles) {
+                    ctx.save();
+                    ctx.translate(o.x + o.size/2, o.y + o.size/2);
+                    ctx.rotate(o.rot * Math.PI / 180);
+                    // Minimal shadow for performance
+                    // ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                    // ctx.shadowBlur = 10; 
+                    ctx.drawImage(this.assets.moon, -o.size/2, -o.size/2, o.size, o.size);
+                    ctx.restore();
+                }
+
+                // 4. Draw Coins
+                for (let c of this.coins) {
+                    // Simple wobble effect
+                    const wobbleX = Math.sin(c.angle) * 3;
+                    ctx.drawImage(this.assets.coin, c.x + wobbleX, c.y, c.size, c.size);
+                }
+
+                // 5. Draw Particles
+                for (let p of this.particles) {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+
+                // 6. Speed Lines (Simple visual cue)
+                ctx.strokeStyle = `rgba(255, 255, 255, 0.15)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for(let i=0; i<3; i++) {
+                    const lx = (this.state.frames * 50 + i * 100) % this.state.width;
+                    const ly = (this.state.frames * 20) % this.state.height;
+                    ctx.moveTo(lx, ly);
+                    ctx.lineTo(lx, ly + 40);
+                }
+                ctx.stroke();
+            };
+
+            this.loop = () => {
+                requestAnimationFrame(this.loop);
+                this.update();
+                this.draw();
+            };
+        };
+
+        // Start App
+        const app = new App();
+        window.onload = app.init;
+
+    </script>
+    <script src="media/sec.js"></script>
+</body>
+</html>
+
+
